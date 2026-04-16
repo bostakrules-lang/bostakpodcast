@@ -1,0 +1,10 @@
+[
+  {"text": "This", "startMs": 0, "endMs": 300, "timestampMs": 150, "confidence": null},
+  {"text": " is", "startMs": 300, "endMs": 600, "timestampMs": 450, "confidence": null},
+  {"text": " a", "startMs": 600, "endMs": 800, "timestampMs": 700, "confidence": null},
+  {"text": " test", "startMs": 800, "endMs": 1200, "timestampMs": 1000, "confidence": null},
+  {"text": " of", "startMs": 1200, "endMs": 1400, "timestampMs": 1300, "confidence": null},
+  {"text": " the", "startMs": 1400, "endMs": 1600, "timestampMs": 1500, "confidence": null},
+  {"text": " reel", "startMs": 1600, "endMs": 2000, "timestampMs": 1800, "confidence": null},
+  {"text": " factory", "startMs": 2000, "endMs": 2500, "timestampMs": 2250, "confidence": null}
+]

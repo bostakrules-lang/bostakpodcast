@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+output/
+episodes/
+.env
+.cache/
+.DS_Store
+whisper.cpp/
+public/clips/
+public/music/*
+!public/music/.gitkeep
+public/biohack-logo.png
+public/biohack-b.png
+_inbox/
+temp/
+*.log
