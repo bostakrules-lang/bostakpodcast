@@ -2,18 +2,23 @@ import { Caption, createTikTokStyleCaptions, TikTokPage } from "@remotion/captio
 import React, { useMemo } from "react";
 import {
   AbsoluteFill,
-  interpolate,
   Sequence,
-  spring,
-  useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { TheBoldFont } from "../load-font";
 
-// ~2-3 words at a time: fast, readable, matches reference reels.
-const SWITCH_CAPTIONS_EVERY_MS = 750;
+// Combine tokens within this window into a single "page" (subtitle line).
+// 1200ms → groups 3-5 spoken words → matches natural breath/phrase pacing.
+const SWITCH_CAPTIONS_EVERY_MS = 1200;
+// Hide subtitles while the hook title is visible (hold 2s + fade 0.35s).
+const HOOK_HIDE_UNTIL_MS = 2400;
+// Small tail after the last token so the eye can finish reading it.
+const TAIL_AFTER_LAST_TOKEN_MS = 220;
 
-export const Subtitles: React.FC<{ captions: Caption[] }> = ({ captions }) => {
+export const Subtitles: React.FC<{
+  captions: Caption[];
+  /** Hide subtitles from this frame onwards (e.g. during CTA window). */
+  hideAfterFrame?: number;
+}> = ({ captions, hideAfterFrame }) => {
   const { fps } = useVideoConfig();
   const { pages } = useMemo(
     () =>
@@ -28,11 +33,29 @@ export const Subtitles: React.FC<{ captions: Caption[] }> = ({ captions }) => {
     <>
       {pages.map((page, index) => {
         const next = pages[index + 1] ?? null;
-        const startFrame = Math.round((page.startMs / 1000) * fps);
-        const endFrame = Math.min(
-          next ? Math.round((next.startMs / 1000) * fps) : Infinity,
-          startFrame + Math.round((SWITCH_CAPTIONS_EVERY_MS / 1000) * fps),
-        );
+        // Real end of the spoken phrase: either the next page's start, or the
+        // last token's toMs plus a small tail (so the subtitle doesn't linger
+        // through silences but also doesn't vanish mid-read).
+        const lastTokenEndMs =
+          page.tokens[page.tokens.length - 1]?.toMs ?? page.startMs;
+        const naturalEndMs = lastTokenEndMs + TAIL_AFTER_LAST_TOKEN_MS;
+        const rawEndMs = next
+          ? Math.min(next.startMs, naturalEndMs)
+          : naturalEndMs;
+
+        // Page fully inside the hook window → skip.
+        if (rawEndMs <= HOOK_HIDE_UNTIL_MS) return null;
+
+        const effectiveStartMs = Math.max(page.startMs, HOOK_HIDE_UNTIL_MS);
+        let startFrame = Math.round((effectiveStartMs / 1000) * fps);
+        let endFrame = Math.round((rawEndMs / 1000) * fps);
+
+        // Trim pages that extend into the CTA window; drop pages that start in it.
+        if (hideAfterFrame !== undefined) {
+          if (startFrame >= hideAfterFrame) return null;
+          if (endFrame > hideAfterFrame) endFrame = hideAfterFrame;
+        }
+
         const duration = endFrame - startFrame;
         if (duration <= 0) return null;
         return (
@@ -46,43 +69,36 @@ export const Subtitles: React.FC<{ captions: Caption[] }> = ({ captions }) => {
 };
 
 const SubtitlePage: React.FC<{ page: TikTokPage }> = ({ page }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-
-  const enter = spring({
-    frame,
-    fps,
-    config: { damping: 200 },
-    durationInFrames: 4,
-  });
-
-  const opacity = interpolate(enter, [0, 1], [0, 1]);
-  const translateY = interpolate(enter, [0, 1], [16, 0]);
-
+  // Hard cut — no spring, no fade, no slide.
   return (
     <AbsoluteFill
       style={{
         justifyContent: "flex-end",
         alignItems: "center",
-        paddingBottom: 380, // TikTok-style bottom-third band (hook is gone after 2s)
+        // Raised ~180px higher than before (was 380) so subs sit in the
+        // middle-lower band, clear of the Biohack-it wordmark.
+        paddingBottom: 560,
         pointerEvents: "none",
       }}
     >
       <div
         style={{
-          transform: `translateY(${translateY}px)`,
-          opacity,
-          fontFamily: TheBoldFont,
-          fontWeight: 900,
-          fontSize: 60,
-          letterSpacing: "-0.5px",
+          // Helvetica Neue stack. On headless Chrome (Linux) the render
+          // resolves to Nimbus Sans, the open-source clone of Helvetica —
+          // metrically identical glyphs, so the look is the same.
+          fontFamily:
+            '"Helvetica Neue", "HelveticaNeue", Helvetica, "Nimbus Sans", "Arial Black", Arial, sans-serif',
+          fontWeight: 800,
+          fontSize: 48,
+          letterSpacing: "-0.3px",
           color: "#FFFFFF",
-          WebkitTextStroke: "8px #000000",
-          paintOrder: "stroke fill",
+          // Soft drop shadow instead of thick stroke — cleaner, modern look.
+          textShadow:
+            "0 2px 4px rgba(0,0,0,0.85), 0 4px 14px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.9)",
           textTransform: "uppercase",
           textAlign: "center",
-          maxWidth: "80%",
-          lineHeight: 1.08,
+          maxWidth: "82%",
+          lineHeight: 1.1,
           whiteSpace: "normal",
           overflowWrap: "break-word",
           wordBreak: "break-word",

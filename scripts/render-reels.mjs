@@ -33,8 +33,14 @@ for (const c of clips) {
   const props = {
     src: c.clipFile, // public/clips/<slug>/clip-XX.mp4
     hook: c.hook,
+    hookHighlight: c.hookHighlight || undefined,
     music: c.music || undefined,
-    musicVolume: c.music ? 0.15 : undefined,
+    // Per-clip volume from clips.json (default 0.18 ≈ -15 dB, subtle bed).
+    musicVolume: c.music ? (c.musicVolume ?? 0.18) : undefined,
+    // Seek into the track so we land on/near the climax. Default 0.
+    musicStartSec: c.musicStartSec ?? 0,
+    // CTA (follow @biohack-it) — overlaid during last N seconds.
+    cta: { handle: "@biohack-it", tagline: "follow for more", durationSec: 3 },
   };
 
   // Write props to a temp file — most reliable across shells/quoting

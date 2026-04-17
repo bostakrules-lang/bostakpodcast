@@ -8,10 +8,8 @@ episodes/
 .DS_Store
 whisper.cpp/
 public/clips/
-public/music/*
-!public/music/.gitkeep
-public/biohack-logo.png
-public/biohack-b.png
+public/sample-video.mp4
+public/sample-video.json
 _inbox/
 temp/
 *.log

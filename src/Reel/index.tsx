@@ -8,13 +8,16 @@ import {
   cancelRender,
   getStaticFiles,
   OffthreadVideo,
+  Sequence,
   staticFile,
   useDelayRender,
+  useVideoConfig,
   watchStaticFile,
 } from "remotion";
 import { z } from "zod";
 import { loadFont } from "../load-font";
 import { BiohackLogo } from "./BiohackLogo";
+import { CTAOverlay } from "./CTAOverlay";
 import { HookTitle } from "./HookTitle";
 import { Subtitles } from "./Subtitles";
 
@@ -23,10 +26,22 @@ export const reelSchema = z.object({
   src: z.string(),
   // CTR hook title shown in red gradient box for entire clip
   hook: z.string(),
+  // Which word of the hook to highlight with a red box (case-insensitive).
+  hookHighlight: z.string().optional(),
   // Optional background music track (public/music/…)
   music: z.string().optional(),
   // Background music volume (0-1). Default 0.15 so it doesn't cover voice.
   musicVolume: z.number().optional(),
+  // Seconds into the music track to start playback (for climax sync).
+  musicStartSec: z.number().optional(),
+  // CTA overlay shown on the final N seconds.
+  cta: z
+    .object({
+      handle: z.string(),
+      tagline: z.string().optional(),
+      durationSec: z.number().optional(),
+    })
+    .optional(),
 });
 
 export const calculateReelMetadata: CalculateMetadataFunction<
@@ -55,9 +70,13 @@ const staticFileExists = (relPath: string) =>
 export const Reel: React.FC<z.infer<typeof reelSchema>> = ({
   src,
   hook,
+  hookHighlight,
   music,
   musicVolume,
+  musicStartSec,
+  cta,
 }) => {
+  const { fps, durationInFrames } = useVideoConfig();
   const [captions, setCaptions] = useState<Caption[]>([]);
   const { delayRender, continueRender } = useDelayRender();
   const [handle] = useState(() => delayRender());
@@ -101,15 +120,39 @@ export const Reel: React.FC<z.infer<typeof reelSchema>> = ({
       {/* Biohack-it logo + B corners */}
       <BiohackLogo />
 
-      {/* Hook title (persistent, red gradient) */}
-      {hook ? <HookTitle text={hook} /> : null}
+      {/* Hook title — keyword highlighted in red box, rest white over video */}
+      {hook ? <HookTitle text={hook} highlight={hookHighlight} /> : null}
 
-      {/* Word-by-word subtitles */}
-      <Subtitles captions={captions} />
+      {/* Word-by-word subtitles — hidden during CTA window for clean composition */}
+      <Subtitles
+        captions={captions}
+        hideAfterFrame={
+          cta
+            ? Math.max(0, durationInFrames - Math.floor((cta.durationSec ?? 3) * fps))
+            : undefined
+        }
+      />
 
       {/* Optional background music (ducked under voice) */}
       {music && staticFileExists(music) ? (
-        <Audio src={staticFile(music)} volume={musicVolume ?? 0.15} />
+        <Audio
+          src={staticFile(music)}
+          volume={musicVolume ?? 0.15}
+          startFrom={Math.floor((musicStartSec ?? 0) * fps)}
+        />
+      ) : null}
+
+      {/* CTA overlay on the final N seconds */}
+      {cta ? (
+        (() => {
+          const ctaFrames = Math.floor((cta.durationSec ?? 3) * fps);
+          const from = Math.max(0, durationInFrames - ctaFrames);
+          return (
+            <Sequence from={from} durationInFrames={ctaFrames}>
+              <CTAOverlay handle={cta.handle} tagline={cta.tagline} />
+            </Sequence>
+          );
+        })()
       ) : null}
     </AbsoluteFill>
   );

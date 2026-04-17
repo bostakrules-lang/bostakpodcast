@@ -1,27 +1,54 @@
 import React from "react";
-import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { TheBoldFont } from "../load-font";
+import {
+  AbsoluteFill,
+  interpolate,
+  spring,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 
 /**
- * Persistent red hook title at bottom of the reel.
- * Matches the Biohack-it reference reels: flat red (#E01621), bold uppercase,
- * tight padding, thin red vertical "stick" extending above the first line.
+ * Hook title shown during the first 2s of the reel.
+ *
+ * Biohack-it reference layout:
+ *   - Helvetica Neue, all caps, heavy bold.
+ *   - Only the key word gets a red box that SLIDES IN horizontally
+ *     (left→right reveal), just like in the reference reels.
+ *   - The rest is white with heavy drop shadow sitting directly over
+ *     the video (no background panel around it).
+ *   - Vertically centered in the safe area (not glued to the top).
  */
 export const HookTitle: React.FC<{
   readonly text: string;
-}> = ({ text }) => {
+  readonly highlight?: string;
+}> = ({ text, highlight }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
+  // --- Global enter (whole block) ---
   const enter = spring({
     frame,
     fps,
-    config: { damping: 14, stiffness: 130, mass: 0.6 },
+    config: { damping: 16, stiffness: 140, mass: 0.65 },
     durationInFrames: 14,
   });
+  const translateY = interpolate(enter, [0, 1], [36, 0]);
+  const blockOpacity = interpolate(enter, [0, 1], [0, 1]);
 
-  // Show the hook only during the first 2s of the clip, then fade out.
-  const holdUntil = Math.round(2 * fps); // 2s
+  // --- Red box slide reveal ---
+  // The key word's red box slides in from left→right over ~18 frames
+  // starting at frame 6 (after the block has started appearing).
+  const slideStart = 6;
+  const slideDur = 16;
+  const slideProgress = interpolate(
+    frame,
+    [slideStart, slideStart + slideDur],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+
+  // --- Exit ---
+  const holdUntil = Math.round(2 * fps);
   const fadeOutFrames = Math.round(0.35 * fps);
   const exitOpacity = interpolate(
     frame,
@@ -29,21 +56,23 @@ export const HookTitle: React.FC<{
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
-
-  const translateY = interpolate(enter, [0, 1], [40, 0]);
-  const opacity = interpolate(enter, [0, 1], [0, 1]) * exitOpacity;
-
-  // Don't render after fade-out ends — keeps the scene clean for the rest of the clip.
+  const opacity = blockOpacity * exitOpacity;
   if (frame > holdUntil + fadeOutFrames + 2) return null;
 
-  const lines = splitIntoLines(text.toUpperCase(), 18);
+  const words = text.toUpperCase().split(/\s+/).filter(Boolean);
+  const keyWord = pickKeyWord(words, highlight);
+  const lines = layoutLines(words);
+
+  const helvetica =
+    '"Helvetica Neue", "HelveticaNeue", Helvetica, "Nimbus Sans", "Arial Black", Arial, sans-serif';
 
   return (
     <AbsoluteFill
       style={{
-        justifyContent: "flex-end",
+        // Slightly below vertical center, roughly 56% of the reel height.
+        justifyContent: "center",
         alignItems: "center",
-        paddingBottom: 360,
+        paddingTop: 220,
         pointerEvents: "none",
       }}
     >
@@ -51,45 +80,104 @@ export const HookTitle: React.FC<{
         style={{
           transform: `translateY(${translateY}px)`,
           opacity,
+          maxWidth: "90%",
           display: "flex",
           flexDirection: "column",
-          alignItems: "flex-start",
-          gap: 4,
-          maxWidth: "92%",
-          position: "relative",
+          alignItems: "center",
+          gap: 10,
         }}
       >
-        {/* Thin red vertical "stick" extending above the box (decorative accent) */}
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: -70,
-            width: 18,
-            height: 70,
-            background: "#E01621",
-          }}
-        />
-
-        {lines.map((line, i) => (
+        {lines.map((line, li) => (
           <div
-            key={i}
+            key={li}
             style={{
-              background: "#E01621",
-              color: "#FFFFFF",
-              fontFamily: TheBoldFont,
-              fontWeight: 900,
-              fontSize: 92,
-              lineHeight: 1.0,
-              letterSpacing: "-0.5px",
-              padding: "12px 22px 16px 22px",
-              textTransform: "uppercase",
-              textAlign: "left",
+              display: "flex",
+              flexWrap: "nowrap",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 14,
               whiteSpace: "nowrap",
-              alignSelf: "flex-start",
             }}
           >
-            {line}
+            {line.map((w, wi) => {
+              const isKey = w === keyWord;
+              return (
+                <span
+                  key={`${li}-${wi}`}
+                  style={{
+                    position: "relative",
+                    fontFamily: helvetica,
+                    fontWeight: 900,
+                    fontSize: 92,
+                    lineHeight: 1.0,
+                    letterSpacing: "-1px",
+                    textTransform: "uppercase",
+                    color: "#FFFFFF",
+                    padding: isKey ? "4px 20px 10px 20px" : 0,
+                    textShadow: isKey
+                      ? "none"
+                      : "0 3px 6px rgba(0,0,0,0.95), 0 6px 16px rgba(0,0,0,0.7), 0 0 2px rgba(0,0,0,1)",
+                    transform: isKey ? "translateY(-2px)" : "none",
+                  }}
+                >
+                  {isKey ? (
+                    <>
+                      {/* Layer 1: white text with shadow, visible only where
+                          the red box has NOT reached yet. */}
+                      <span
+                        aria-hidden
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          padding: "4px 20px 10px 20px",
+                          color: "#FFFFFF",
+                          textShadow:
+                            "0 3px 6px rgba(0,0,0,0.95), 0 6px 16px rgba(0,0,0,0.7), 0 0 2px rgba(0,0,0,1)",
+                          clipPath: `inset(-30% 0 -30% ${slideProgress * 100}%)`,
+                          WebkitClipPath: `inset(-30% 0 -30% ${
+                            slideProgress * 100
+                          }%)`,
+                        }}
+                      >
+                        {w}
+                      </span>
+                      {/* Sliding red background — slides in left→right. */}
+                      <span
+                        aria-hidden
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          background: "#E01621",
+                          clipPath: `inset(0 ${(1 - slideProgress) * 100}% 0 0)`,
+                          WebkitClipPath: `inset(0 ${
+                            (1 - slideProgress) * 100
+                          }% 0 0)`,
+                        }}
+                      />
+                      {/* Layer 2: white text NO shadow, visible only where the
+                          red box HAS reached (sits on top of the red). */}
+                      <span
+                        style={{
+                          position: "relative",
+                          display: "inline-block",
+                          color: "#FFFFFF",
+                          clipPath: `inset(-30% ${
+                            (1 - slideProgress) * 100
+                          }% -30% 0)`,
+                          WebkitClipPath: `inset(-30% ${
+                            (1 - slideProgress) * 100
+                          }% -30% 0)`,
+                        }}
+                      >
+                        {w}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ position: "relative" }}>{w}</span>
+                  )}
+                </span>
+              );
+            })}
           </div>
         ))}
       </div>
@@ -97,12 +185,23 @@ export const HookTitle: React.FC<{
   );
 };
 
-/** Balance text into 1-2 lines on word boundaries. */
-const splitIntoLines = (text: string, maxChars: number): string[] => {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.join(" ").length <= maxChars) return [words.join(" ")];
+/** Pick the word to highlight. Prefer explicit match, else longest word. */
+const pickKeyWord = (words: string[], highlight?: string): string => {
+  if (highlight) {
+    const up = highlight.toUpperCase();
+    const hit = words.find((w) => w === up);
+    if (hit) return hit;
+  }
+  const candidates = words.filter((w) => w.length >= 3);
+  const pool = candidates.length ? candidates : words;
+  return pool.reduce((a, b) => (b.length > a.length ? b : a), pool[0] ?? "");
+};
 
-  const total = words.join(" ").length;
+/** Balance a word list into 1 or 2 lines so each fits within ~16 characters. */
+const layoutLines = (words: string[]): string[][] => {
+  const joined = words.join(" ");
+  if (joined.length <= 16) return [words];
+  const total = joined.length;
   const target = total / 2;
   let best: [string[], string[]] = [words, []];
   let bestDiff = Infinity;
@@ -110,10 +209,10 @@ const splitIntoLines = (text: string, maxChars: number): string[] => {
     const a = words.slice(0, i).join(" ");
     const b = words.slice(i).join(" ");
     const diff = Math.abs(a.length - target) + Math.abs(b.length - target);
-    if (diff < bestDiff && a.length <= maxChars + 4 && b.length <= maxChars + 4) {
+    if (diff < bestDiff) {
       best = [words.slice(0, i), words.slice(i)];
       bestDiff = diff;
     }
   }
-  return [best[0].join(" "), best[1].join(" ")].filter(Boolean);
+  return [best[0], best[1]].filter((l) => l.length);
 };
